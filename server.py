@@ -8,40 +8,31 @@ server = socket.socket()
 server.bind(('127.0.0.1', 8080))
 server.listen(5)
 
-# 列出文件夹下的所有文件名
-files_list = []
-for file in os.listdir(settings.VIDEO_PATH):
-    files_list.append(file)
+while True:
+    try:
+        conn, addr = server.accept()
 
-conn, addr = server.accept()
+        # 接受字典头
+        file_header_size = struct.unpack('i', conn.recv(4))[0]
 
-# 发送的提示信息
-msg1 = "可选文件如下：\n"
-for index, file in enumerate(files_list, 1):
-    msg1 = msg1 + str(index) + '. ' + file + '\n'
-msg1 = (msg1 + '请输入数字选择想要下载的文件:\n').encode('utf-8')
+        # 接受字典
+        file_header = json.loads(conn.recv(file_header_size))
+        print(file_header)
 
-conn.send(str(len(msg1)).encode('utf-8'))    # send the size of msg1
-conn.send(msg1)    # send msg1
+        # 接受文件
+        file_size = int(file_header.get('file_size'))
+        file_name = file_header.get('file_name')
 
-# 接受选择信息
-client_reply = int(conn.recv(1024).decode('utf-8'))
-file_chosen = files_list[client_reply-1]
+        with open(os.path.join(settings.SAVED_PATH, file_name), 'wb') as f:
+            data = b''
+            res_size = 0
+            while res_size < file_size:
+                data = data + conn.recv(1024)
+                f.write(data)
+                res_size = res_size + len(data)
+                data = b''
 
-# -------------发送指定文件-------------
-# 读取文件内容
-with open(os.path.join(settings.VIDEO_PATH, file_chosen), 'rb') as f:
-    file_data = f.read()
-# 生成文件头字典
-file_header = json.dumps({'file_name': file_chosen, 'file_size': len(file_data)})
-# 发送字典大小
-dict_header = struct.pack('i', len(file_header))
-conn.send(dict_header)
-
-# 发送字典
-conn.send(file_header.encode('utf-8'))
-
-# 发送文件
-conn.send(file_data)
-
-conn.close()
+        conn.close()
+    except Exception as e:
+        print(e)
+        conn.close()
